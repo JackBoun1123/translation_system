@@ -82,6 +82,28 @@ services:
       - redis
       - worker
     command: celery -A app.services.tasks flower --port=5555 --broker=redis://redis:6379/0
+  
+  # Turn server cho WebRTC
+coturn:
+  image: coturn/coturn
+  ports:
+    - "3478:3478/udp"
+    - "3478:3478/tcp"
+  environment:
+    - TURN_USERNAME=username
+    - TURN_PASSWORD=password
+
+# Frontend React
+frontend:
+  build:
+    context: ./frontend
+    dockerfile: Dockerfile
+  ports:
+    - "3000:3000"
+  volumes:
+    - ./frontend:/app
+  depends_on:
+    - app
 
 volumes:
   redis_data:

@@ -63,3 +63,9 @@ black==23.9.1
 flake8==6.1.0
 isort==5.12.0
 mypy==1.5.1 
+
+websockets==10.4
+aiortc==1.4.0  # WebRTC cho Python
+python-socketio==5.7.2
+flask-cors==3.0.10  # Nếu dùng Flask
+fastapi-cors  # Nếu dùng FastAPI
