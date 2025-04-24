@@ -520,4 +520,394 @@ class CLIView:
                         last_transcript = result["transcript"]
                     
                     if result.get("translation") and result["translation"] != last_translation:
-                        self.console.print(f"[green]Translation: {result['translation']}[
+                        self.console.print(f"[green]Translation: {result['translation']}[/green]")
+                        last_translation = result["translation"]
+                
+                await asyncio.sleep(0.1)  # Small delay to prevent CPU hogging
+                
+        except Exception as e:
+            self.console.print(f"[red]Error in streaming processing: {str(e)}[/red]")
+        finally:
+            self.streaming_active = False
+    
+    async def manage_context(self, *args):
+        """Manage translation contexts"""
+        if not args:
+            self.console.print("[yellow]Context management requires an action.[/yellow]")
+            self.console.print("[yellow]Usage: context [create|list|use|info|delete] [args][/yellow]")
+            return False
+        
+        action = args[0].lower()
+        
+        if action == "create":
+            return await self._create_context(*args[1:])
+        elif action == "list":
+            return await self._list_contexts()
+        elif action == "use":
+            return await self._use_context(*args[1:])
+        elif action == "info":
+            return await self._context_info(*args[1:])
+        elif action == "delete":
+            return await self._delete_context(*args[1:])
+        else:
+            self.console.print(f"[red]Unknown context action: {action}[/red]")
+            self.console.print("[yellow]Available actions: create, list, use, info, delete[/yellow]")
+            return False
+    
+    async def _create_context(self, *args):
+        """Create a new translation context"""
+        # Get context name
+        if not args:
+            name = self.prompt_session.prompt(
+                HTML("<ansigreen>Enter context name: </ansigreen>")
+            )
+        else:
+            name = args[0]
+        
+        # Get languages
+        languages = []
+        if len(args) > 1:
+            languages = args[1].split(",")
+        else:
+            languages_input = self.prompt_session.prompt(
+                HTML("<ansigreen>Enter language codes (comma-separated): </ansigreen>")
+            )
+            if languages_input:
+                languages = [lang.strip() for lang in languages_input.split(",")]
+        
+        # Get domain (optional)
+        domain = None
+        if len(args) > 2:
+            domain = args[2]
+        else:
+            domain_input = self.prompt_session.prompt(
+                HTML("<ansigreen>Enter domain (optional): </ansigreen>")
+            )
+            if domain_input:
+                domain = domain_input
+        
+        # Get description (optional)
+        description = None
+        if len(args) > 3:
+            description = " ".join(args[3:])
+        else:
+            description_input = self.prompt_session.prompt(
+                HTML("<ansigreen>Enter description (optional): </ansigreen>")
+            )
+            if description_input:
+                description = description_input
+        
+        # Create the context
+        try:
+            context_id = await self.context_controller.create_context(
+                name=name,
+                languages=languages,
+                domain=domain,
+                description=description
+            )
+            
+            self.console.print(f"[green]Context created with ID: {context_id}[/green]")
+            
+            # Ask if user wants to use this context
+            response = self.prompt_session.prompt(
+                HTML("<ansigreen>Use this context now? (y/n): </ansigreen>")
+            )
+            if response.lower() in ("y", "yes"):
+                self.current_context_id = context_id
+                self.console.print(f"[green]Now using context: {name}[/green]")
+            
+            return True
+            
+        except Exception as e:
+            self.console.print(f"[red]Error creating context: {str(e)}[/red]")
+            return False
+    
+    async def _list_contexts(self):
+        """List all available contexts"""
+        try:
+            contexts = await self.context_controller.list_contexts()
+            
+            if not contexts:
+                self.console.print("[yellow]No contexts found.[/yellow]")
+                return True
+            
+            table = Table(title="Available Contexts")
+            table.add_column("ID", style="cyan")
+            table.add_column("Name", style="green")
+            table.add_column("Languages", style="yellow")
+            table.add_column("Domain", style="magenta")
+            
+            for ctx in contexts:
+                languages = ", ".join(ctx.get("languages", []))
+                table.add_row(
+                    str(ctx["id"]),
+                    ctx["name"],
+                    languages,
+                    ctx.get("domain", "")
+                )
+            
+            self.console.print(table)
+            return True
+            
+        except Exception as e:
+            self.console.print(f"[red]Error listing contexts: {str(e)}[/red]")
+            return False
+    
+    async def _use_context(self, *args):
+        """Set current context by ID or name"""
+        if not args:
+            self.console.print("[red]No context ID provided.[/red]")
+            self.console.print("[yellow]Usage: context use <context_id>[/yellow]")
+            return False
+        
+        context_id = args[0]
+        
+        try:
+            # Try to get context by ID first
+            context = await self.context_controller.get_context(context_id)
+            
+            # If not found, try to find by name
+            if not context:
+                contexts = await self.context_controller.list_contexts()
+                for ctx in contexts:
+                    if ctx["name"].lower() == context_id.lower():
+                        context = ctx
+                        context_id = ctx["id"]
+                        break
+            
+            if not context:
+                self.console.print(f"[red]Context not found: {context_id}[/red]")
+                return False
+            
+            self.current_context_id = context_id
+            self.console.print(f"[green]Now using context: {context['name']}[/green]")
+            
+            # Update languages if available in context
+            if context.get("languages") and len(context["languages"]) >= 2:
+                # Set first language as source, second as target
+                response = self.prompt_session.prompt(
+                    HTML("<ansigreen>Also set languages from this context? (y/n): </ansigreen>")
+                )
+                if response.lower() in ("y", "yes"):
+                    self.current_source_language = context["languages"][0]
+                    self.current_target_language = context["languages"][1]
+                    self.console.print(f"[green]Source language set to: {self.current_source_language}[/green]")
+                    self.console.print(f"[green]Target language set to: {self.current_target_language}[/green]")
+            
+            return True
+            
+        except Exception as e:
+            self.console.print(f"[red]Error setting context: {str(e)}[/red]")
+            return False
+    
+    async def _context_info(self, *args):
+        """Show detailed information about a context"""
+        if not args:
+            # If no ID provided, show current context
+            if not self.current_context_id:
+                self.console.print("[yellow]No active context.[/yellow]")
+                return False
+            context_id = self.current_context_id
+        else:
+            context_id = args[0]
+        
+        try:
+            context = await self.context_controller.get_context(context_id)
+            
+            if not context:
+                self.console.print(f"[red]Context not found: {context_id}[/red]")
+                return False
+            
+            # Display context details
+            self.console.print(f"[bold blue]Context Details: {context['name']}[/bold blue]")
+            self.console.print(f"ID: [cyan]{context_id}[/cyan]")
+            self.console.print(f"Languages: [yellow]{', '.join(context.get('languages', []))}[/yellow]")
+            
+            if context.get("domain"):
+                self.console.print(f"Domain: [magenta]{context['domain']}[/magenta]")
+            
+            if context.get("description"):
+                self.console.print(f"Description: [green]{context['description']}[/green]")
+            
+            # Show memory entries count
+            memory_count = await self.context_controller.get_memory_count(context_id)
+            self.console.print(f"Memory entries: [cyan]{memory_count}[/cyan]")
+            
+            return True
+            
+        except Exception as e:
+            self.console.print(f"[red]Error getting context info: {str(e)}[/red]")
+            return False
+    
+    async def _delete_context(self, *args):
+        """Delete a context by ID"""
+        if not args:
+            self.console.print("[red]No context ID provided.[/red]")
+            self.console.print("[yellow]Usage: context delete <context_id>[/yellow]")
+            return False
+        
+        context_id = args[0]
+        
+        try:
+            # Get context info first for confirmation
+            context = await self.context_controller.get_context(context_id)
+            
+            if not context:
+                self.console.print(f"[red]Context not found: {context_id}[/red]")
+                return False
+            
+            # Confirm deletion
+            response = self.prompt_session.prompt(
+                HTML(f"<ansired>Delete context '{context['name']}'? This cannot be undone (y/n): </ansired>")
+            )
+            
+            if response.lower() not in ("y", "yes"):
+                self.console.print("[yellow]Context deletion cancelled.[/yellow]")
+                return True
+            
+            # Delete context
+            success = await self.context_controller.delete_context(context_id)
+            
+            if success:
+                self.console.print(f"[green]Context '{context['name']}' deleted.[/green]")
+                
+                # Reset current context if it was the one deleted
+                if self.current_context_id == context_id:
+                    self.current_context_id = None
+                    self.console.print("[yellow]Current context has been reset.[/yellow]")
+                
+                return True
+            else:
+                self.console.print(f"[red]Failed to delete context.[/red]")
+                return False
+            
+        except Exception as e:
+            self.console.print(f"[red]Error deleting context: {str(e)}[/red]")
+            return False
+    
+    async def set_language(self, *args):
+        """Set source or target language"""
+        if len(args) < 2:
+            self.console.print("[red]Insufficient arguments.[/red]")
+            self.console.print("[yellow]Usage: language source|target <language_code>[/yellow]")
+            return False
+        
+        language_type = args[0].lower()
+        language_code = args[1]
+        
+        if language_type not in ("source", "target"):
+            self.console.print(f"[red]Invalid language type: {language_type}[/red]")
+            self.console.print("[yellow]Use 'source' or 'target'[/yellow]")
+            return False
+        
+        if language_type == "source":
+            self.current_source_language = language_code
+            self.console.print(f"[green]Source language set to: {language_code}[/green]")
+        else:
+            self.current_target_language = language_code
+            self.console.print(f"[green]Target language set to: {language_code}[/green]")
+        
+        return True
+    
+    async def run(self):
+        """Run the CLI interface main loop"""
+        self.show_welcome()
+        
+        while True:
+            try:
+                # Get command from user
+                user_input = self.prompt_session.prompt(
+                    HTML("<ansiblue>>> </ansiblue>"),
+                    completer=self.command_completer
+                )
+                
+                if not user_input.strip():
+                    continue
+                
+                # Parse command and arguments
+                parts = user_input.split()
+                command = parts[0].lower()
+                args = parts[1:]
+                
+                # Execute command if it exists
+                if command in self.commands:
+                    command_func = self.commands[command]["func"]
+                    
+                    # Run the command function
+                    if asyncio.iscoroutinefunction(command_func):
+                        await command_func(*args)
+                    else:
+                        command_func(*args)
+                else:
+                    # If not a command, treat as text to translate
+                    await self.translate_text(*parts)
+                
+            except KeyboardInterrupt:
+                self.console.print("\n[yellow]Operation cancelled.[/yellow]")
+                continue
+            except EOFError:
+                self.exit_app()
+            except Exception as e:
+                self.console.print(f"[red]Error: {str(e)}[/red]")
+    
+    @staticmethod
+    def parse_arguments():
+        """Parse command line arguments"""
+        parser = argparse.ArgumentParser(description="Translation System CLI")
+        parser.add_argument("--config", type=str, help="Path to configuration file")
+        parser.add_argument("--source", type=str, help="Source language code")
+        parser.add_argument("--target", type=str, help="Target language code")
+        parser.add_argument("--context", type=str, help="Context ID to use")
+        parser.add_argument("--verbose", action="store_true", help="Verbose output")
+        
+        return parser.parse_args()
+
+def main():
+    """Main entry point for the CLI application"""
+    # Parse arguments
+    args = CLIView.parse_arguments()
+    
+    # Configure logging
+    log_level = logging.DEBUG if args.verbose else logging.INFO
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    
+    # Load configuration
+    config_path = args.config or "config.json"
+    try:
+        with open(config_path, "r") as f:
+            config = json.load(f)
+    except FileNotFoundError:
+        print(f"Configuration file not found: {config_path}")
+        print("Using default configuration.")
+        config = {
+            "version": "1.0.0",
+            "audio": {
+                "sample_rate": 16000,
+                "channels": 1
+            },
+            "models": {
+                "asr": {"default": "default"},
+                "translation": {"default": "default"},
+                "tts": {"default": "default"}
+            }
+        }
+    
+    # Create and run CLI view
+    cli_view = CLIView(config)
+    
+    # Set command line arguments
+    if args.source:
+        cli_view.current_source_language = args.source
+    if args.target:
+        cli_view.current_target_language = args.target
+    if args.context:
+        cli_view.current_context_id = args.context
+    
+    # Run the event loop
+    asyncio.run(cli_view.run())
+
+if __name__ == "__main__":
+    main()

@@ -1,1 +1,65 @@
- 
+# Các thư viện cốt lõi
+numpy==1.24.3
+scipy==1.11.3
+pandas==2.1.1
+tqdm==4.66.1
+
+# Thư viện cho xử lý audio
+sounddevice==0.4.6
+soundfile==0.12.1
+librosa==0.10.1
+pydub==0.25.1
+
+# Thư viện deep learning và ML
+torch==2.1.0
+torchaudio==2.1.0
+transformers==4.34.0
+sentence-transformers==2.2.2
+huggingface-hub==0.17.3
+accelerate==0.23.0
+
+# Thư viện giao diện CLI
+rich==13.6.0
+prompt-toolkit==3.0.39
+argparse==1.4.0
+pyfiglet==0.8.post1
+colorama==0.4.6
+
+# Thư viện API và server
+fastapi==0.103.1
+uvicorn==0.23.2
+pydantic==2.4.2
+starlette==0.27.0
+python-multipart==0.0.6
+
+# Thư viện cơ sở dữ liệu và cache
+sqlalchemy==2.0.21
+aiosqlite==0.19.0
+redis==5.0.0
+aioredis==2.0.1
+
+# Thư viện phụ thuộc cho xử lý nhiều nhiệm vụ
+celery==5.3.4
+flower==2.0.1
+asgiref==3.7.2
+aiohttp==3.8.5
+
+# Thư viện cho ASR
+whisper-openai==20231117
+openai-whisper==20231117
+
+# Thư viện cho dịch thuật
+sacremoses==0.0.53
+sentencepiece==0.1.99
+
+# Thư viện cho TTS
+piper-tts==1.2.0
+espeak-ng==0.1.2
+
+# Công cụ phát triển và kiểm thử
+pytest==7.4.2
+pytest-asyncio==0.21.1
+black==23.9.1
+flake8==6.1.0
+isort==5.12.0
+mypy==1.5.1 

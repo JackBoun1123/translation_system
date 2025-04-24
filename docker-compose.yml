@@ -1,1 +1,88 @@
- 
+version: '3.8'
+
+services:
+  # Dịch vụ chính - Hệ thống dịch thuật
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: he_thong_dich_thuat
+    restart: unless-stopped
+    ports:
+      - "5000:5000"  # Port cho API
+    volumes:
+      - ./app:/app/app
+      - ./data:/app/data
+      - ./config.json:/app/config.json
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+    depends_on:
+      - redis
+      - db
+    command: python -m app.main --mode api
+
+  # Dịch vụ Redis cho cache
+  redis:
+    image: redis:6-alpine
+    container_name: dich_thuat_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+  # Dịch vụ cơ sở dữ liệu
+  db:
+    image: postgres:13-alpine
+    container_name: dich_thuat_db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=dich_thuat
+      - POSTGRES_PASSWORD=mat_khau_an_toan
+      - POSTGRES_DB=dich_thuat_db
+
+  # Dịch vụ Celery cho xử lý background
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dich_thuat_worker
+    restart: unless-stopped
+    volumes:
+      - ./app:/app/app
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+    depends_on:
+      - redis
+      - db
+    command: celery -A app.services.tasks worker --loglevel=info
+
+  # Dịch vụ giám sát Celery
+  monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dich_thuat_monitor
+    restart: unless-stopped
+    ports:
+      - "5555:5555"
+    volumes:
+      - ./app:/app/app
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - redis
+      - worker
+    command: celery -A app.services.tasks flower --port=5555 --broker=redis://redis:6379/0
+
+volumes:
+  redis_data:
+  postgres_data: 
