@@ -145,4 +145,92 @@ class CacheService:
         """
         cache_key = f"tts:{text_hash}:{voice}"
         
-        result = self.tts_cache.get(cache
+        result = self.tts_cache.get(cache_key)
+        if result:
+            self.hits += 1
+            # Di chuyển item lên đầu cache (LRU)
+            self.tts_cache.move_to_end(cache_key)
+            logger.debug(f"Tìm thấy audio TTS trong cache: {text_hash}")
+            return result
+        else:
+            self.misses += 1
+            logger.debug(f"Không tìm thấy audio TTS trong cache: {text_hash}")
+            return None
+    
+    def store_tts_audio(self, text_hash: str, voice: str, audio_data: bytes) -> None:
+        """
+        Lưu dữ liệu âm thanh TTS vào cache
+        
+        Args:
+            text_hash: Hash của văn bản
+            voice: Mã giọng nói
+            audio_data: Dữ liệu âm thanh
+        """
+        cache_key = f"tts:{text_hash}:{voice}"
+        
+        # Thêm vào cache
+        self.tts_cache[cache_key] = audio_data
+        
+        # Di chuyển item mới thêm lên đầu (LRU)
+        self.tts_cache.move_to_end(cache_key)
+        
+        # Kiểm tra và cắt bớt cache nếu cần
+        if len(self.tts_cache) > self.config['tts_cache_size']:
+            self.tts_cache.popitem(last=False)  # Xóa item ít sử dụng nhất
+            
+        logger.debug(f"Đã lưu audio TTS vào cache: {text_hash}")
+    
+    def clear_cache(self, cache_type: Optional[str] = None) -> None:
+        """
+        Xóa dữ liệu trong cache
+        
+        Args:
+            cache_type: Loại cache cần xóa ('translation', 'asr', 'tts', hoặc None để xóa tất cả)
+        """
+        if cache_type is None or cache_type == 'translation':
+            self.translation_cache.clear()
+            logger.info("Đã xóa cache dịch")
+            
+        if cache_type is None or cache_type == 'asr':
+            self.asr_cache.clear()
+            logger.info("Đã xóa cache ASR")
+            
+        if cache_type is None or cache_type == 'tts':
+            self.tts_cache.clear()
+            logger.info("Đã xóa cache TTS")
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """
+        Lấy thống kê về cache
+        
+        Returns:
+            Dict[str, Any]: Thông tin thống kê về cache
+        """
+        return {
+            'hits': self.hits,
+            'misses': self.misses,
+            'hit_ratio': self.hits / (self.hits + self.misses) if (self.hits + self.misses) > 0 else 0,
+            'translation_cache_size': len(self.translation_cache),
+            'asr_cache_size': len(self.asr_cache),
+            'tts_cache_size': len(self.tts_cache),
+            'translation_cache_limit': self.config['translation_cache_size'],
+            'asr_cache_limit': self.config['asr_cache_size'],
+            'tts_cache_limit': self.config['tts_cache_size']
+        }
+    
+    def _make_translation_key(self, text: str, source_lang: str, 
+                            target_lang: str, context_id: Optional[str] = None) -> str:
+        """
+        Tạo khóa cache cho bản dịch
+        
+        Args:
+            text: Văn bản cần dịch
+            source_lang: Mã ngôn ngữ nguồn
+            target_lang: Mã ngôn ngữ đích
+            context_id: ID ngữ cảnh (nếu có)
+            
+        Returns:
+            str: Khóa cache
+        """
+        context_part = f":{context_id}" if context_id else ""
+        return f"translate:{source_lang}:{target_lang}{context_part}:{text}"

@@ -130,4 +130,112 @@ class ContextService:
         Xóa ngữ cảnh khỏi danh sách hoạt động
         
         Args:
-            context_id: ID của ngữ cả 
+            context_id: ID của ngữ cảnh
+            
+        Returns:
+            bool: True nếu xóa thành công, False nếu không
+        """
+        if context_id in self.active_contexts:
+            # Xóa khỏi model
+            success = self.context_model.remove_context(context_id)
+            
+            if success:
+                # Xóa khỏi danh sách hoạt động
+                del self.active_contexts[context_id]
+                logger.info(f"Đã xóa ngữ cảnh: {context_id}")
+                return True
+            else:
+                logger.error(f"Không thể xóa ngữ cảnh từ model: {context_id}")
+                return False
+        else:
+            logger.warning(f"Không tìm thấy ngữ cảnh để xóa với ID: {context_id}")
+            return False
+    
+    def update_context_status(self, context_id: str, active: bool = True) -> bool:
+        """
+        Cập nhật trạng thái hoạt động của ngữ cảnh
+        
+        Args:
+            context_id: ID của ngữ cảnh
+            active: True để kích hoạt, False để vô hiệu hóa
+            
+        Returns:
+            bool: True nếu cập nhật thành công, False nếu không
+        """
+        if context_id in self.active_contexts:
+            if not active:
+                # Chỉ cần đánh dấu là không hoạt động, không xóa khỏi hệ thống
+                self.active_contexts[context_id]['active'] = False
+                logger.info(f"Đã vô hiệu hóa ngữ cảnh: {context_id}")
+            else:
+                # Kích hoạt lại ngữ cảnh
+                self.active_contexts[context_id]['active'] = True
+                logger.info(f"Đã kích hoạt ngữ cảnh: {context_id}")
+            return True
+        else:
+            logger.warning(f"Không tìm thấy ngữ cảnh để cập nhật trạng thái: {context_id}")
+            return False
+    
+    def get_context_info(self, context_id: str) -> Optional[Dict]:
+        """
+        Lấy thông tin về ngữ cảnh
+        
+        Args:
+            context_id: ID của ngữ cảnh
+            
+        Returns:
+            Optional[Dict]: Thông tin về ngữ cảnh hoặc None nếu không tìm thấy
+        """
+        if context_id in self.active_contexts:
+            # Lấy thông tin cơ bản
+            context_info = self.active_contexts[context_id].copy()
+            
+            # Thêm các thông tin chi tiết từ model
+            stats = self.context_model.get_context_stats(context_id)
+            if stats:
+                context_info.update(stats)
+                
+            return context_info
+        else:
+            logger.warning(f"Không tìm thấy ngữ cảnh: {context_id}")
+            return None
+    
+    def find_similar_documents(self, text: str, context_id: str, 
+                              max_results: int = 5) -> List[Dict]:
+        """
+        Tìm các tài liệu tương tự dựa trên văn bản đầu vào
+        
+        Args:
+            text: Văn bản tìm kiếm
+            context_id: ID của ngữ cảnh
+            max_results: Số lượng kết quả tối đa
+            
+        Returns:
+            List[Dict]: Danh sách các tài liệu tương tự
+        """
+        # Kiểm tra context_id có tồn tại không
+        if context_id not in self.active_contexts:
+            logger.warning(f"Không tìm thấy ngữ cảnh với ID: {context_id}")
+            return []
+        
+        return self.context_model.find_similar_documents(text, context_id, max_results)
+    
+    def extract_terminology(self, context_id: str, source_lang: str, 
+                           target_lang: str) -> Dict[str, str]:
+        """
+        Trích xuất thuật ngữ từ ngữ cảnh cho cặp ngôn ngữ
+        
+        Args:
+            context_id: ID của ngữ cảnh
+            source_lang: Mã ngôn ngữ nguồn
+            target_lang: Mã ngôn ngữ đích
+            
+        Returns:
+            Dict[str, str]: Từ điển thuật ngữ {nguồn: đích}
+        """
+        # Kiểm tra context_id có tồn tại không
+        if context_id not in self.active_contexts:
+            logger.warning(f"Không tìm thấy ngữ cảnh với ID: {context_id}")
+            return {}
+        
+        return self.context_model.extract_terminology(context_id, source_lang, target_lang)
